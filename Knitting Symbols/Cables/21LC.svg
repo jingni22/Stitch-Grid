@@ -5,7 +5,8 @@
             <polygon points="30,0 30,10 15,0" />
         </clipPath>
     </defs>
-    <path d="M1 9 L29 1" stroke="black" stroke-width="1px" stroke-linecap="round" clip-path="url(#cut)" />
+    <path d="M15 9 L29 1" stroke="black" stroke-width="1px" stroke-linecap="round" clip-path="url(#cut)" />
+    <path d="M1 9 L15 1" stroke="black" stroke-width="1px" stroke-linecap="round" clip-path="url(#cut)" />
 
     <path d="M15 9 L1 1" stroke="black" stroke-width="1px" stroke-linecap="round" />
     <path d="M15 1 L29 9" stroke="black" stroke-width="1px" stroke-linecap="round" />
