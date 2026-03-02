@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 100">
+    <path d="M10 90 L200 10" stroke="black" stroke-width="10px" stroke-linecap="round" />
+    <path d="M390 90 L200 10" stroke="black" stroke-width="10px" stroke-linecap="round" />
+    <text x="50%" y="80%" stroke="black" font-size="70" stroke-width="1" text-anchor="middle">
+        4
+    </text>
+</svg>
