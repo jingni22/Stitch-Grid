@@ -1,13 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 10">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 100">
     <defs>
         <clipPath id="cut">
-            <polygon points="0,10 0,0 30,10" />
-            <polygon points="60,0 60,10 30,0" />
+            <polygon points="0,100 0,0 300,100" />
+            <polygon points="600,0 600,100 300,0" />
         </clipPath>
     </defs>
-    <path d="M1 9 L30 1" stroke="black" stroke-width="1px" stroke-linecap="round" clip-path="url(#cut)"/>
-    <path d="M30 9 L59 1" stroke="black" stroke-width="1px" stroke-linecap="round" clip-path="url(#cut)"/>
+    <path d="M10 90 L300 10" stroke="black" stroke-width="10px" stroke-linecap="round" clip-path="url(#cut)" />
+    <path d="M300 90 L590 10" stroke="black" stroke-width="10px" stroke-linecap="round" clip-path="url(#cut)" />
 
-    <path d="M30 9 L1 1" stroke="black" stroke-width="1px" stroke-linecap="round" />
-    <path d="M30 1 L59 9" stroke="black" stroke-width="1px" stroke-linecap="round" />
+    <path d="M300 90 L10 10" stroke="black" stroke-width="10px" stroke-linecap="round" />
+    <path d="M300 10 L590 90" stroke="black" stroke-width="10px" stroke-linecap="round" />
 </svg>
