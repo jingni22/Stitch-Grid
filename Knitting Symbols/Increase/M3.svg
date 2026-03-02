@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 10">
+    <path d="M1 1 L15 9" stroke="black" stroke-width="1px" stroke-linecap="round" />
+    <path d="M29 1 L15 9" stroke="black" stroke-width="1px" stroke-linecap="round" />
+    <text x="50%" y="60%" stroke="black" font-size="7" font-family="arial" stroke-width="0.1"  text-anchor="middle" >
+        3
+    </text>
+</svg>

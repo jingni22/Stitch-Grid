@@ -5,11 +5,12 @@
             <polygon points="40,0 40,10 20,0" />
         </clipPath>
     </defs>
+    <!-- Right -->
     <path d="M1 9 L20 1" stroke="black" stroke-width="1px" stroke-linecap="round" clip-path="url(#cut)" />
-    <circle r="1px" cx="35" cy="3"/>
-
+    <path d="M20 9 L39 1" stroke="black" stroke-width="1px" stroke-linecap="round" clip-path="url(#cut)"/>
+    <!-- Left -->
     <path d="M20 9 L1 1" stroke="black" stroke-width="1px" stroke-linecap="round" />
     <path d="M20 1 L39 9" stroke="black" stroke-width="1px" stroke-linecap="round" />
-
-    
+    <!-- Bottom Line -->
+    <path d="M7 9 L14 9" stroke="black" stroke-width="1px" stroke-linecap="round" />
 </svg>
