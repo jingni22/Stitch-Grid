@@ -1,0 +1,11 @@
+<svg viewBox="0 0 100 100">
+  <path d="
+      M 20,90
+      C 80,80
+        90,30
+        50,30
+      S 10,80
+        80,90
+    " fill="none" stroke="black" stroke-width="10px" stroke-linecap="round" />
+  <path d="M10 10 L 90 10  " stroke="black" stroke-width="10px" stroke-linecap="round" fill="none" />
+</svg>
