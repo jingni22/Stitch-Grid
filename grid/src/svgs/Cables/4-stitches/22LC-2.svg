@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 100">
+    <defs>
+        <clipPath id="cut">
+            <polygon points="0,100 0,0 300,100" />
+            <polygon points="400,0 400,100 100,0" />
+        </clipPath>
+    </defs>
+    <!-- Left -->
+    <path d="M10 10 L300 90" stroke="black" stroke-width="10px" stroke-linecap="round" />
+    <path d="M100 10 L390 90" stroke="black" stroke-width="10px" stroke-linecap="round" />
+    <!-- Right -->
+    <path d="M10 90 L310 10" stroke="black" stroke-width="10px" stroke-linecap="round" clip-path="url(#cut)" />
+    <path d="M100 90 L390 10" stroke="black" stroke-width="10px" stroke-linecap="round" clip-path="url(#cut)" />
+</svg>
