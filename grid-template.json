@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Gridmark Project Template — Fill this in to define a grid layout, then load it into the app.",
+
+  "grid": {
+    "$comment": "Grid dimensions in cells.",
+    "rows": 50,
+    "cols": 150
+  },
+
+  "symbols": [
+    {
+      "$comment": "Each symbol the grid can reference. 'id' must be unique across all symbols. 'width' is the span in cells (1–20). 'svgFile' is the path relative to src/svgs/ (used by the directory). 'svgContent' is the raw inline SVG string (used at runtime). Provide at least one of svgFile or svgContent.",
+      "id": "sym_001",
+      "name": "Dot",
+      "width": 1,
+      "svgFile": "basic/dot.svg",
+      "svgContent": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 100 100\"><circle cx=\"50\" cy=\"50\" r=\"30\" fill=\"#333\"/></svg>"
+    },
+    {
+      "id": "sym_002",
+      "name": "Long Arrow",
+      "width": 2,
+      "svgFile": "arrows/long-arrow.svg",
+      "svgContent": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 200 100\"><line x1=\"8\" y1=\"50\" x2=\"192\" y2=\"50\" stroke=\"#333\" stroke-width=\"10\" stroke-linecap=\"round\"/><polyline points=\"160,20 192,50 160,80\" stroke=\"#333\" stroke-width=\"10\" stroke-linecap=\"round\" stroke-linejoin=\"round\" fill=\"none\"/></svg>"
+    },
+    {
+      "id": "sym_003",
+      "name": "My Custom Symbol",
+      "width": 3,
+      "svgFile": null,
+      "svgContent": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 300 100\"><rect x=\"10\" y=\"10\" width=\"280\" height=\"80\" rx=\"12\" fill=\"#e94560\"/></svg>"
+    }
+  ],
+
+  "cells": [
+    {
+      "$comment": "Each entry places a symbol on the grid. 'row' and 'col' are the top-left cell (0-indexed). 'symbolId' must match an id from the symbols array above. 'spanWidth' is how many cells wide this placement is (must match the symbol's width). Only specify root cells — non-root span cells are derived automatically.",
+      "row": 0,
+      "col": 0,
+      "symbolId": "sym_001",
+      "spanWidth": 1
+    },
+    {
+      "row": 0,
+      "col": 2,
+      "symbolId": "sym_002",
+      "spanWidth": 2
+    },
+    {
+      "row": 1,
+      "col": 0,
+      "symbolId": "sym_003",
+      "spanWidth": 3
+    },
+    {
+      "row": 2,
+      "col": 5,
+      "symbolId": "sym_001",
+      "spanWidth": 1
+    }
+  ],
+
+  "backgroundImage": {
+    "$comment": "Optional reference image. Set to null to omit. 'src' is a data URL or external URL. Position/size are in grid-cell units (fractional ok).",
+    "src": null,
+    "col": 2,
+    "row": 2,
+    "cellW": 20,
+    "cellH": 15
+  },
+
+  "viewport": {
+    "$comment": "Optional initial camera position. 'offsetX/Y' are pixel offsets, 'zoom' is the scale factor (1 = 100%).",
+    "offsetX": 40,
+    "offsetY": 40,
+    "zoom": 1
+  }
+}
