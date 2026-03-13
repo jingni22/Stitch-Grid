@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import useGridState from "../hooks/useGridState";
 import { parseKey } from "../utils/cellUtils";
 import Sidebar from "./Sidebar";
@@ -10,6 +10,15 @@ import KnittingCanvas from "./KnittingCanvas";
 export default function App() {
   const state = useGridState();
   const [knittingMode, setKnittingMode] = useState(false);
+
+  useEffect(() => {
+    const handler = (e) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, []);
 
   let selectionInfo = null;
   if (state.selected.size > 0) {
