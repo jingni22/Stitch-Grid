@@ -4,11 +4,10 @@
 This is a Grid app specifically made for creating and editing knitting stitch charts.
 
 ## To run
-Clone repo
-
-`cd grid`
-
-`npm run preview`
+Clone repo<br>
+`cd grid`<br>
+`npm install`<br>
+`npm run preview` OR `npm run dev`
 
 ### Create Chart
 There are pre made svg knitting symbols on the side bar under **DIR**.<br>
