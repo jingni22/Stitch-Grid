@@ -2,14 +2,6 @@
 // CELL UTILITIES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-export function svgToDataUrl(svgString) {
-  const encoded = encodeURIComponent(svgString);
-  const bytes = encoded.replace(/%([0-9A-F]{2})/gi, (_, hex) =>
-    String.fromCharCode(parseInt(hex, 16))
-  );
-  return `data:image/svg+xml;base64,${btoa(bytes)}`;
-}
-
 export function cellKey(r, c) {
   return `${r},${c}`;
 }
@@ -33,8 +25,7 @@ export function removeSpanContaining(cellsMap, key) {
     const rootCell = cellsMap.get(cell.spanRoot);
     if (rootCell) {
       const { r, c: rootC } = parseKey(cell.spanRoot);
-      for (let i = 0; i < rootCell.spanWidth; i++)
-        cellsMap.delete(cellKey(r, rootC + i));
+      for (let i = 0; i < rootCell.spanWidth; i++) cellsMap.delete(cellKey(r, rootC + i));
     }
   }
 }

@@ -1,13 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { ROWS, COLS, CELL_SIZE, MAX_HISTORY } from "../utils/constants";
-import { DEFAULT_SYMBOLS, svgTree } from "../utils/svgLoader";
-import {
-  cellKey,
-  parseKey,
-  cloneCells,
-  removeSpanContaining,
-  resolveRoot,
-} from "../utils/cellUtils";
+import { ROWS, COLS, CELL_SIZE, MAX_HISTORY } from "../constants";
+import { cellKey, parseKey, cloneCells, removeSpanContaining, resolveRoot } from "../utils/cellUtils";
+import { computeDefaultWidth, svgTree } from "../utils/svgUtils";
 
 export default function useGridState() {
   // ── Symbol management ─────────────────────────────────────────────────────
@@ -26,9 +20,7 @@ export default function useGridState() {
 
   // SVG Directory (tree-based)
   const [showDirectory, setShowDirectory] = useState(false);
-  const [customDirectoryTree, setCustomDirectoryTree] = useState({
-    __files: [],
-  });
+  const [customDirectoryTree, setCustomDirectoryTree] = useState({ __files: [] });
   const dirFileInputRef = useRef(null);
 
   // ── Grid dimensions (mutable) ─────────────────────────────────────────────
@@ -41,6 +33,8 @@ export default function useGridState() {
   const isPanning = useRef(false);
   const panStart = useRef({ x: 0, y: 0 });
   const panOffset = useRef({ x: 40, y: 40 });
+  const panRafId = useRef(null);
+  const panLastMouse = useRef({ x: 0, y: 0 });
 
   // ── Selection ─────────────────────────────────────────────────────────────
   const [selected, setSelected] = useState(new Set());
@@ -57,6 +51,9 @@ export default function useGridState() {
   const redoStack = useRef([]);
   const [historyLen, setHistoryLen] = useState({ undo: 0, redo: 0 });
 
+  // ── Dirty tracking (unsaved changes) ──────────────────────────────────
+  const dirtyRef = useRef(false);
+
   // ── Clipboard ─────────────────────────────────────────────────────────────
   const [clipboard, setClipboard] = useState(null);
 
@@ -71,6 +68,19 @@ export default function useGridState() {
   const [bgImageEditing, setBgImageEditing] = useState(false);
   const bgDragState = useRef(null);
   const bgFileInputRef = useRef(null);
+
+  // ── Guide lines ─────────────────────────────────────────────────────────
+  const [guideLineMode, setGuideLineMode] = useState(false);
+  const [guideLines, setGuideLines] = useState([]);
+  const [guideLinePreview, setGuideLinePreview] = useState(null);
+  const guideLineStart = useRef(null);
+
+  // ── File handle (File System Access API) ──────────────────────────────
+  const fileHandleRef = useRef(null);
+  const [saveError, setSaveError] = useState(null);
+  const [fileName, setFileName] = useState("Untitled");
+  const fileNameRef = useRef(fileName);
+  fileNameRef.current = fileName;
 
   // ── UI state ──────────────────────────────────────────────────────────────
   const [showConfirm, setShowConfirm] = useState(false);
@@ -89,6 +99,7 @@ export default function useGridState() {
     if (undoStack.current.length > MAX_HISTORY) undoStack.current.shift();
     redoStack.current = [];
     setHistoryLen({ undo: undoStack.current.length, redo: 0 });
+    dirtyRef.current = true;
   }, []);
 
   const undo = useCallback(() => {
@@ -102,6 +113,7 @@ export default function useGridState() {
       });
       return new Map(prev);
     });
+    dirtyRef.current = true;
   }, []);
 
   const redo = useCallback(() => {
@@ -115,6 +127,7 @@ export default function useGridState() {
       });
       return new Map(next);
     });
+    dirtyRef.current = true;
   }, []);
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -132,14 +145,8 @@ export default function useGridState() {
     return {
       c0: Math.max(0, Math.floor(-offset.x / cs)),
       r0: Math.max(0, Math.floor(-offset.y / cs)),
-      c1: Math.min(
-        gridColsRef.current - 1,
-        Math.ceil((clientWidth - offset.x) / cs)
-      ),
-      r1: Math.min(
-        gridRowsRef.current - 1,
-        Math.ceil((clientHeight - offset.y) / cs)
-      ),
+      c1: Math.min(gridColsRef.current - 1, Math.ceil((clientWidth - offset.x) / cs)),
+      r1: Math.min(gridRowsRef.current - 1, Math.ceil((clientHeight - offset.y) / cs)),
     };
   }, [offset, cs]);
 
@@ -149,6 +156,19 @@ export default function useGridState() {
       return {
         r: Math.floor((e.clientY - rect.top - offset.y) / cs),
         c: Math.floor((e.clientX - rect.left - offset.x) / cs),
+      };
+    },
+    [offset, cs]
+  );
+
+  const mouseToIntersection = useCallback(
+    (e) => {
+      const rect = containerRef.current.getBoundingClientRect();
+      const gx = (e.clientX - rect.left - offset.x) / cs;
+      const gy = (e.clientY - rect.top - offset.y) / cs;
+      return {
+        r: Math.max(0, Math.min(gridRowsRef.current, Math.round(gy))),
+        c: Math.max(0, Math.min(gridColsRef.current, Math.round(gx))),
       };
     },
     [offset, cs]
@@ -212,12 +232,7 @@ export default function useGridState() {
         const cell = next.get(rk);
         if (!cell) continue;
         const { r, c } = parseKey(rk);
-        toPlace.push({
-          r,
-          c,
-          symbolId: cell.symbolId,
-          spanWidth: cell.spanWidth,
-        });
+        toPlace.push({ r, c, symbolId: cell.symbolId, spanWidth: cell.spanWidth });
       }
       for (const key of selected) {
         if (!next.get(key)) {
@@ -229,20 +244,13 @@ export default function useGridState() {
         const cell = next.get(rk);
         if (!cell) continue;
         const { r, c } = parseKey(rk);
-        for (let i = 0; i < cell.spanWidth; i++)
-          next.delete(cellKey(r, c + i));
+        for (let i = 0; i < cell.spanWidth; i++) next.delete(cellKey(r, c + i));
       }
       const newSel = new Set();
       for (const { r, c, symbolId, spanWidth } of toPlace) {
         const nr = r + dr,
           nc = c + dc;
-        if (
-          nr < 0 ||
-          nr >= gridRowsRef.current ||
-          nc < 0 ||
-          nc >= gridColsRef.current
-        )
-          continue;
+        if (nr < 0 || nr >= gridRowsRef.current || nc < 0 || nc >= gridColsRef.current) continue;
         if (symbolId) {
           for (let i = 0; i < spanWidth; i++)
             removeSpanContaining(next, cellKey(nr, nc + i));
@@ -250,15 +258,9 @@ export default function useGridState() {
             if (nc + i >= gridColsRef.current) continue;
             const nk = cellKey(nr, nc + i);
             if (i === 0) next.set(nk, { symbolId, spanWidth });
-            else
-              next.set(nk, {
-                symbolId,
-                spanWidth: 0,
-                spanRoot: cellKey(nr, nc),
-              });
+            else next.set(nk, { symbolId, spanWidth: 0, spanRoot: cellKey(nr, nc) });
           }
-          for (let i = 0; i < spanWidth; i++)
-            newSel.add(cellKey(nr, nc + i));
+          for (let i = 0; i < spanWidth; i++) newSel.add(cellKey(nr, nc + i));
         } else {
           newSel.add(cellKey(nr, nc));
         }
@@ -277,6 +279,9 @@ export default function useGridState() {
   const bgImageEditingRef = useRef(bgImageEditing);
   bgImageEditingRef.current = bgImageEditing;
 
+  const guideLineModeRef = useRef(guideLineMode);
+  guideLineModeRef.current = guideLineMode;
+
   const onMouseDown = useCallback(
     (e) => {
       if (e.button === 1 || spaceDown.current) {
@@ -294,14 +299,15 @@ export default function useGridState() {
         return;
       }
       if (e.button !== 0) return;
-      const cell = mouseToCell(e);
-      if (
-        cell.r < 0 ||
-        cell.r >= gridRowsRef.current ||
-        cell.c < 0 ||
-        cell.c >= gridColsRef.current
-      )
+      if (guideLineModeRef.current) {
+        const inter = mouseToIntersection(e);
+        guideLineStart.current = inter;
+        setGuideLinePreview({ r1: inter.r, c1: inter.c, r2: inter.r, c2: inter.c });
+        e.preventDefault();
         return;
+      }
+      const cell = mouseToCell(e);
+      if (cell.r < 0 || cell.r >= gridRowsRef.current || cell.c < 0 || cell.c >= gridColsRef.current) return;
       if (moveMode) {
         isMoveDragging.current = true;
         moveDragStartCell.current = cell;
@@ -313,16 +319,36 @@ export default function useGridState() {
       dragCurrent.current = cell;
       setDragRect({ start: cell, end: cell });
     },
-    [offset, mouseToCell, moveMode]
+    [offset, mouseToCell, mouseToIntersection, moveMode]
   );
 
   const onMouseMove = useCallback(
     (e) => {
       if (isPanning.current) {
-        setOffset({
-          x: panOffset.current.x + e.clientX - panStart.current.x,
-          y: panOffset.current.y + e.clientY - panStart.current.y,
-        });
+        const cx = e.clientX, cy = e.clientY;
+        panLastMouse.current.x = cx;
+        panLastMouse.current.y = cy;
+        if (panRafId.current === null) {
+          panRafId.current = requestAnimationFrame(() => {
+            panRafId.current = null;
+            setOffset({
+              x: panOffset.current.x + panLastMouse.current.x - panStart.current.x,
+              y: panOffset.current.y + panLastMouse.current.y - panStart.current.y,
+            });
+          });
+        }
+        return;
+      }
+      if (guideLineStart.current) {
+        const inter = mouseToIntersection(e);
+        const start = guideLineStart.current;
+        const dr = Math.abs(inter.r - start.r);
+        const dc = Math.abs(inter.c - start.c);
+        if (dc >= dr) {
+          setGuideLinePreview({ r1: start.r, c1: start.c, r2: start.r, c2: inter.c });
+        } else {
+          setGuideLinePreview({ r1: start.r, c1: start.c, r2: inter.r, c2: start.c });
+        }
         return;
       }
       if (isMoveDragging.current && moveDragStartCell.current) {
@@ -339,12 +365,29 @@ export default function useGridState() {
         setDragRect({ start: dragStart.current, end: cell });
       }
     },
-    [mouseToCell]
+    [mouseToCell, mouseToIntersection]
   );
 
   const onMouseUp = useCallback(() => {
     if (isPanning.current) {
       isPanning.current = false;
+      if (panRafId.current !== null) {
+        cancelAnimationFrame(panRafId.current);
+        panRafId.current = null;
+      }
+      setOffset({
+        x: panOffset.current.x + panLastMouse.current.x - panStart.current.x,
+        y: panOffset.current.y + panLastMouse.current.y - panStart.current.y,
+      });
+      return;
+    }
+    if (guideLineStart.current) {
+      const preview = guideLinePreview;
+      guideLineStart.current = null;
+      if (preview && (preview.r1 !== preview.r2 || preview.c1 !== preview.c2)) {
+        setGuideLines((prev) => [...prev, preview]);
+      }
+      setGuideLinePreview(null);
       return;
     }
     if (isMoveDragging.current) {
@@ -355,10 +398,7 @@ export default function useGridState() {
     if (isDragging.current) {
       isDragging.current = false;
       setDragRect(null);
-      const keys = getCellsInDragRect(
-        dragStart.current,
-        dragCurrent.current
-      );
+      const keys = getCellsInDragRect(dragStart.current, dragCurrent.current);
       const withCtrl = ctrlAtDragStart.current;
 
       if (keys.length === 1) {
@@ -389,7 +429,7 @@ export default function useGridState() {
         }
       }
     }
-  }, [getCellsInDragRect]);
+  }, [getCellsInDragRect, guideLinePreview]);
 
   const onWheel = useCallback((e) => {
     e.preventDefault();
@@ -439,11 +479,7 @@ export default function useGridState() {
         let rs = 0;
         while (rs < sorted.length) {
           let re = rs;
-          while (
-            re + 1 < sorted.length &&
-            sorted[re + 1] === sorted[re] + 1
-          )
-            re++;
+          while (re + 1 < sorted.length && sorted[re + 1] === sorted[re] + 1) re++;
           if (re - rs + 1 >= symbol.width) {
             let i = rs;
             while (i + symbol.width - 1 <= re) {
@@ -466,8 +502,7 @@ export default function useGridState() {
             removeSpanContaining(next, cellKey(r, startC + i));
           for (let i = 0; i < symbol.width; i++) {
             const key = cellKey(r, startC + i);
-            if (i === 0)
-              next.set(key, { symbolId: symbol.id, spanWidth: symbol.width });
+            if (i === 0) next.set(key, { symbolId: symbol.id, spanWidth: symbol.width });
             else
               next.set(key, {
                 symbolId: symbol.id,
@@ -496,14 +531,12 @@ export default function useGridState() {
         const cell = next.get(key);
         if (cell && cell.spanWidth > 1) {
           const { r, c } = parseKey(key);
-          for (let i = 0; i < cell.spanWidth; i++)
-            next.delete(cellKey(r, c + i));
+          for (let i = 0; i < cell.spanWidth; i++) next.delete(cellKey(r, c + i));
         } else if (cell && cell.spanWidth === 0 && cell.spanRoot) {
           const root = next.get(cell.spanRoot);
           if (root) {
             const { r, c: rc } = parseKey(cell.spanRoot);
-            for (let i = 0; i < root.spanWidth; i++)
-              next.delete(cellKey(r, rc + i));
+            for (let i = 0; i < root.spanWidth; i++) next.delete(cellKey(r, rc + i));
           }
         } else {
           next.delete(key);
@@ -527,6 +560,119 @@ export default function useGridState() {
     setShowConfirm(false);
   };
 
+  const importGridmark = useCallback((jsonStr, handle) => {
+    try {
+      const data = JSON.parse(jsonStr);
+      if (data.format !== "gridmark" || !data.cells || !data.symbols) {
+        alert("Invalid Gridmark file.");
+        return;
+      }
+      pushHistory(cells);
+      if (data.gridRows) setGridRows(data.gridRows);
+      if (data.gridCols) setGridCols(data.gridCols);
+      setSymbols((prev) => {
+        const existingIds = new Set(prev.map((s) => s.id));
+        const newSyms = data.symbols.filter((s) => !existingIds.has(s.id));
+        return newSyms.length > 0 ? [...prev, ...newSyms] : prev;
+      });
+      const newCells = new Map();
+      for (const entry of data.cells) {
+        const { key, ...cellData } = entry;
+        newCells.set(key, cellData);
+      }
+      setCells(newCells);
+      setSelected(new Set());
+      setMoveMode(false);
+      setMoveOffset({ dr: 0, dc: 0 });
+      if (handle) {
+        fileHandleRef.current = handle;
+        setFileName(handle.name.replace(/\.json$/i, ""));
+      }
+    } catch (e) {
+      alert("Failed to import file: " + e.message);
+    }
+  }, [cells]);
+
+  // ── Save (File System Access API) ───────────────────────────────────────
+
+  const cellsRef = useRef(cells);
+  cellsRef.current = cells;
+  const symbolsRef = useRef(symbols);
+  symbolsRef.current = symbols;
+  const gridRowsRefForSave = useRef(gridRows);
+  gridRowsRefForSave.current = gridRows;
+  const gridColsRefForSave = useRef(gridCols);
+  gridColsRefForSave.current = gridCols;
+
+  const buildGridmarkJson = useCallback(() => {
+    const c = cellsRef.current;
+    const s = symbolsRef.current;
+    const cellsArr = [];
+    for (const [key, cell] of c) cellsArr.push({ key, ...cell });
+    const usedIds = new Set();
+    for (const [, cell] of c) { if (cell.symbolId) usedIds.add(cell.symbolId); }
+    const usedSymbols = s
+      .filter((sym) => usedIds.has(sym.id))
+      .map((sym) => ({ id: sym.id, name: sym.name, width: sym.width, svgContent: sym.svgContent }));
+    return JSON.stringify({
+      format: "gridmark",
+      version: 1,
+      gridRows: gridRowsRefForSave.current,
+      gridCols: gridColsRefForSave.current,
+      symbols: usedSymbols,
+      cells: cellsArr,
+    }, null, 2);
+  }, []);
+
+  const saveGridmark = useCallback(async () => {
+    setSaveError(null);
+    const json = buildGridmarkJson();
+    const handle = fileHandleRef.current;
+
+    if (handle) {
+      try {
+        const writable = await handle.createWritable();
+        await writable.write(json);
+        await writable.close();
+        dirtyRef.current = false;
+        return;
+      } catch (err) {
+        if (err.name === "AbortError") return;
+        setSaveError("File not found or inaccessible. Use Save As to choose a new location.");
+        setTimeout(() => setSaveError(null), 4000);
+        return;
+      }
+    }
+
+    if (window.showSaveFilePicker) {
+      try {
+        const newHandle = await window.showSaveFilePicker({
+          suggestedName: fileNameRef.current + ".json",
+          types: [{ description: "Gridmark JSON", accept: { "application/json": [".json"] } }],
+        });
+        const writable = await newHandle.createWritable();
+        await writable.write(json);
+        await writable.close();
+        fileHandleRef.current = newHandle;
+        setFileName(newHandle.name.replace(/\.json$/i, ""));
+        dirtyRef.current = false;
+      } catch (err) {
+        if (err.name === "AbortError") return;
+        setSaveError("Save failed: " + err.message);
+        setTimeout(() => setSaveError(null), 4000);
+      }
+    } else {
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileNameRef.current + ".json";
+      a.click();
+      URL.revokeObjectURL(url);
+      dirtyRef.current = false;
+    }
+  }, [buildGridmarkJson]);
+
   // ═══════════════════════════════════════════════════════════════════════════
   // COPY / PASTE
   // ═══════════════════════════════════════════════════════════════════════════
@@ -549,12 +695,7 @@ export default function useGridState() {
       const cell = cells.get(key);
       if (!cell) {
         const { r, c } = parseKey(key);
-        entries.push({
-          dr: r - maxR,
-          dc: c - minC,
-          symbolId: null,
-          spanWidth: 1,
-        });
+        entries.push({ dr: r - maxR, dc: c - minC, symbolId: null, spanWidth: 1 });
         continue;
       }
       const rk = resolveRoot(cells, key);
@@ -588,25 +729,14 @@ export default function useGridState() {
         if (!symbolId) continue;
         const nr = maxR + dr,
           nc = minC + dc;
-        if (
-          nr < 0 ||
-          nr >= gridRowsRef.current ||
-          nc < 0 ||
-          nc >= gridColsRef.current
-        )
-          continue;
+        if (nr < 0 || nr >= gridRowsRef.current || nc < 0 || nc >= gridColsRef.current) continue;
         for (let i = 0; i < spanWidth; i++)
           removeSpanContaining(next, cellKey(nr, nc + i));
         for (let i = 0; i < spanWidth; i++) {
           if (nc + i >= gridColsRef.current) continue;
           const nk = cellKey(nr, nc + i);
           if (i === 0) next.set(nk, { symbolId, spanWidth });
-          else
-            next.set(nk, {
-              symbolId,
-              spanWidth: 0,
-              spanRoot: cellKey(nr, nc),
-            });
+          else next.set(nk, { symbolId, spanWidth: 0, spanRoot: cellKey(nr, nc) });
         }
       }
       return next;
@@ -647,18 +777,14 @@ export default function useGridState() {
       return;
     }
     const id = `custom_${Date.now()}`;
-    setSymbols((prev) => [
-      ...prev,
-      { id, name, width: w, svgContent: newSymSvg.content },
-    ]);
+    setSymbols((prev) => [...prev, { id, name, width: w, svgContent: newSymSvg.content }]);
     setNewSymSvg(null);
     setNewSymName("");
     setNewSymWidth(1);
     setAddError("");
   };
 
-  const deleteSymbol = (id) =>
-    setSymbols((prev) => prev.filter((s) => s.id !== id));
+  const deleteSymbol = (id) => setSymbols((prev) => prev.filter((s) => s.id !== id));
 
   // ═══════════════════════════════════════════════════════════════════════════
   // EDIT EXISTING SYMBOL
@@ -677,9 +803,7 @@ export default function useGridState() {
     if (!name) return;
     if (!w || w < 1 || w > 20) return;
     setSymbols((prev) =>
-      prev.map((s) =>
-        s.id === editingSymbolId ? { ...s, name, width: w } : s
-      )
+      prev.map((s) => (s.id === editingSymbolId ? { ...s, name, width: w } : s))
     );
     setEditingSymbolId(null);
     setEditSymName("");
@@ -697,29 +821,34 @@ export default function useGridState() {
   // ═══════════════════════════════════════════════════════════════════════════
 
   const handleDirSvgUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.name.endsWith(".svg") && file.type !== "image/svg+xml") return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const content = ev.target.result;
-      const name = fileNameToDisplayName(file.name);
-      const id = `dirCustom_${Date.now()}`;
-      const defaultWidth = computeDefaultWidth(content);
-      const item = {
-        id,
-        name,
-        svgContent: content,
-        defaultWidth,
-        pathLabel: "Uploads",
-        fileName: file.name,
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    for (const file of files) {
+      if (!file.name.endsWith(".svg") && file.type !== "image/svg+xml") continue;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const content = ev.target.result;
+        const name = file.name
+          .replace(/\.svg$/i, "")
+          .replace(/[-_]+/g, " ")
+          .replace(/\b\w/g, (c) => c.toUpperCase());
+        const id = `dirCustom_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        const vbMatch = content.match(/viewBox\s*=\s*["']([^"']+)["']/);
+        let defaultWidth = 1;
+        if (vbMatch) {
+          const parts = vbMatch[1].trim().split(/[\s,]+/).map(Number);
+          if (parts.length >= 4 && parts[3] > 0) {
+            defaultWidth = Math.max(1, Math.min(20, Math.round(parts[2] / parts[3])));
+          }
+        }
+        const item = { id, name, svgContent: content, defaultWidth, pathLabel: "Uploaded", fileName: file.name };
+        setCustomDirectoryTree((prev) => ({
+          ...prev,
+          __files: [...prev.__files, item],
+        }));
       };
-      setCustomDirectoryTree((prev) => ({
-        ...prev,
-        __files: [...prev.__files, item],
-      }));
-    };
-    reader.readAsText(file);
+      reader.readAsText(file);
+    }
     e.target.value = "";
   };
 
@@ -729,21 +858,13 @@ export default function useGridState() {
     const id = `fromDir_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     setSymbols((prev) => [
       ...prev,
-      {
-        id,
-        name: dirItem.name,
-        width: dirItem.defaultWidth,
-        svgContent: dirItem.svgContent,
-      },
+      { id, name: dirItem.name, width: dirItem.defaultWidth, svgContent: dirItem.svgContent },
     ]);
   };
 
   const removeFromDirectory = (dirId) => {
     const removeFromNode = (node) => {
-      const newNode = {
-        ...node,
-        __files: node.__files.filter((f) => f.id !== dirId),
-      };
+      const newNode = { ...node, __files: node.__files.filter((f) => f.id !== dirId) };
       for (const key of Object.keys(node)) {
         if (key === "__files") continue;
         newNode[key] = removeFromNode(node[key]);
@@ -764,6 +885,176 @@ export default function useGridState() {
   const addRow = useCallback(() => {
     setGridRows((prev) => prev + 1);
   }, []);
+
+  const insertColumnsBefore = useCallback(() => {
+    if (!selected.size) return;
+    const selCols = new Set();
+    for (const key of selected) { selCols.add(parseKey(key).c); }
+    const sortedSelCols = [...selCols].sort((a, b) => a - b);
+    const insertAt = sortedSelCols[0];
+    const count = sortedSelCols.length;
+
+    setCells((prev) => {
+      pushHistory(prev);
+      const next = new Map();
+      for (const [key, cell] of prev) {
+        if (cell.spanWidth === 0) continue;
+        const { r, c } = parseKey(key);
+        const spanEnd = c + cell.spanWidth - 1;
+        if (spanEnd < insertAt) {
+          next.set(key, { symbolId: cell.symbolId, spanWidth: cell.spanWidth });
+          for (let i = 1; i < cell.spanWidth; i++) {
+            next.set(cellKey(r, c + i), { symbolId: cell.symbolId, spanWidth: 0, spanRoot: key });
+          }
+        } else {
+          const newC = c + count;
+          const newKey = cellKey(r, newC);
+          next.set(newKey, { symbolId: cell.symbolId, spanWidth: cell.spanWidth });
+          for (let i = 1; i < cell.spanWidth; i++) {
+            next.set(cellKey(r, newC + i), { symbolId: cell.symbolId, spanWidth: 0, spanRoot: newKey });
+          }
+        }
+      }
+      return next;
+    });
+
+    const newSel = new Set();
+    for (const key of selected) {
+      const { r, c } = parseKey(key);
+      newSel.add(cellKey(r, c >= insertAt ? c + count : c));
+    }
+    setSelected(newSel);
+    setGridCols((prev) => prev + count);
+  }, [selected, pushHistory]);
+
+  const insertColumnsAfter = useCallback(() => {
+    if (!selected.size) return;
+    const selCols = new Set();
+    for (const key of selected) { selCols.add(parseKey(key).c); }
+    const sortedSelCols = [...selCols].sort((a, b) => a - b);
+    const insertAfter = sortedSelCols[sortedSelCols.length - 1];
+    const insertAt = insertAfter + 1;
+    const count = sortedSelCols.length;
+
+    setCells((prev) => {
+      pushHistory(prev);
+      const next = new Map();
+      for (const [key, cell] of prev) {
+        if (cell.spanWidth === 0) continue;
+        const { r, c } = parseKey(key);
+        if (c >= insertAt) {
+          const newC = c + count;
+          const newKey = cellKey(r, newC);
+          next.set(newKey, { symbolId: cell.symbolId, spanWidth: cell.spanWidth });
+          for (let i = 1; i < cell.spanWidth; i++) {
+            next.set(cellKey(r, newC + i), { symbolId: cell.symbolId, spanWidth: 0, spanRoot: newKey });
+          }
+        } else {
+          next.set(key, { symbolId: cell.symbolId, spanWidth: cell.spanWidth });
+          for (let i = 1; i < cell.spanWidth; i++) {
+            next.set(cellKey(r, c + i), { symbolId: cell.symbolId, spanWidth: 0, spanRoot: key });
+          }
+        }
+      }
+      return next;
+    });
+
+    const newSel = new Set();
+    for (const key of selected) {
+      const { r, c } = parseKey(key);
+      newSel.add(cellKey(r, c >= insertAt ? c + count : c));
+    }
+    setSelected(newSel);
+    setGridCols((prev) => prev + count);
+  }, [selected, pushHistory]);
+
+  const insertRowBefore = useCallback(() => {
+    if (!selected.size) return;
+    let minSelRow = Infinity;
+    let maxSelRow = -Infinity;
+    for (const key of selected) {
+      const r = parseKey(key).r;
+      if (r < minSelRow) minSelRow = r;
+      if (r > maxSelRow) maxSelRow = r;
+    }
+    const numRows = maxSelRow - minSelRow + 1;
+    const insertAt = minSelRow;
+
+    setCells((prev) => {
+      pushHistory(prev);
+      const next = new Map();
+      for (const [key, cell] of prev) {
+        if (cell.spanWidth === 0) continue;
+        const { r, c } = parseKey(key);
+        if (r >= insertAt) {
+          const newR = r + numRows;
+          const newKey = cellKey(newR, c);
+          next.set(newKey, { symbolId: cell.symbolId, spanWidth: cell.spanWidth });
+          for (let i = 1; i < cell.spanWidth; i++) {
+            next.set(cellKey(newR, c + i), { symbolId: cell.symbolId, spanWidth: 0, spanRoot: newKey });
+          }
+        } else {
+          next.set(key, { symbolId: cell.symbolId, spanWidth: cell.spanWidth });
+          for (let i = 1; i < cell.spanWidth; i++) {
+            next.set(cellKey(r, c + i), { symbolId: cell.symbolId, spanWidth: 0, spanRoot: key });
+          }
+        }
+      }
+      return next;
+    });
+
+    const newSel = new Set();
+    for (const key of selected) {
+      const { r, c } = parseKey(key);
+      newSel.add(cellKey(r >= insertAt ? r + numRows : r, c));
+    }
+    setSelected(newSel);
+    setGridRows((prev) => prev + numRows);
+  }, [selected, pushHistory]);
+
+  const insertRowAfter = useCallback(() => {
+    if (!selected.size) return;
+    let minSelRow = Infinity;
+    let maxSelRow = -Infinity;
+    for (const key of selected) {
+      const r = parseKey(key).r;
+      if (r < minSelRow) minSelRow = r;
+      if (r > maxSelRow) maxSelRow = r;
+    }
+    const numRows = maxSelRow - minSelRow + 1;
+    const insertAt = maxSelRow + 1;
+
+    setCells((prev) => {
+      pushHistory(prev);
+      const next = new Map();
+      for (const [key, cell] of prev) {
+        if (cell.spanWidth === 0) continue;
+        const { r, c } = parseKey(key);
+        if (r >= insertAt) {
+          const newR = r + numRows;
+          const newKey = cellKey(newR, c);
+          next.set(newKey, { symbolId: cell.symbolId, spanWidth: cell.spanWidth });
+          for (let i = 1; i < cell.spanWidth; i++) {
+            next.set(cellKey(newR, c + i), { symbolId: cell.symbolId, spanWidth: 0, spanRoot: newKey });
+          }
+        } else {
+          next.set(key, { symbolId: cell.symbolId, spanWidth: cell.spanWidth });
+          for (let i = 1; i < cell.spanWidth; i++) {
+            next.set(cellKey(r, c + i), { symbolId: cell.symbolId, spanWidth: 0, spanRoot: key });
+          }
+        }
+      }
+      return next;
+    });
+
+    const newSel = new Set();
+    for (const key of selected) {
+      const { r, c } = parseKey(key);
+      newSel.add(cellKey(r >= insertAt ? r + numRows : r, c));
+    }
+    setSelected(newSel);
+    setGridRows((prev) => prev + numRows);
+  }, [selected, pushHistory]);
 
   const removeSelectedColumns = useCallback(() => {
     if (!selected.size) return;
@@ -794,11 +1085,7 @@ export default function useGridState() {
           if (newSpan > 0) {
             next.set(newKey, { symbolId: cell.symbolId, spanWidth: newSpan });
             for (let i = 1; i < newSpan; i++) {
-              next.set(cellKey(r, newC + i), {
-                symbolId: cell.symbolId,
-                spanWidth: 0,
-                spanRoot: newKey,
-              });
+              next.set(cellKey(r, newC + i), { symbolId: cell.symbolId, spanWidth: 0, spanRoot: newKey });
             }
           }
         }
@@ -832,16 +1119,9 @@ export default function useGridState() {
         const newR = r - shift;
         const newKey = cellKey(newR, c);
         if (cell.spanWidth >= 1) {
-          next.set(newKey, {
-            symbolId: cell.symbolId,
-            spanWidth: cell.spanWidth,
-          });
+          next.set(newKey, { symbolId: cell.symbolId, spanWidth: cell.spanWidth });
           for (let i = 1; i < cell.spanWidth; i++) {
-            next.set(cellKey(newR, c + i), {
-              symbolId: cell.symbolId,
-              spanWidth: 0,
-              spanRoot: newKey,
-            });
+            next.set(cellKey(newR, c + i), { symbolId: cell.symbolId, spanWidth: 0, spanRoot: newKey });
           }
         }
       }
@@ -868,10 +1148,8 @@ export default function useGridState() {
         const cellW = cellH * (img.width / img.height);
         setBgImage({
           src: ev.target.result,
-          col: 2,
-          row: 2,
-          cellW,
-          cellH,
+          col: 2, row: 2,
+          cellW, cellH,
           naturalW: img.width,
           naturalH: img.height,
         });
@@ -894,14 +1172,10 @@ export default function useGridState() {
     const bg = bgImageRef.current;
     const currentCs = csRef.current;
     bgDragState.current = {
-      startMx: e.clientX,
-      startMy: e.clientY,
-      startCol: bg?.col || 0,
-      startRow: bg?.row || 0,
-      startCellW: bg?.cellW || 10,
-      startCellH: bg?.cellH || 10,
-      type,
-      cs: currentCs,
+      startMx: e.clientX, startMy: e.clientY,
+      startCol: bg?.col || 0, startRow: bg?.row || 0,
+      startCellW: bg?.cellW || 10, startCellH: bg?.cellH || 10,
+      type, cs: currentCs,
     };
     const onMove = (me) => {
       if (!bgDragState.current) return;
@@ -909,22 +1183,16 @@ export default function useGridState() {
       const dx = me.clientX - ds.startMx;
       const dy = me.clientY - ds.startMy;
       if (ds.type === "move") {
-        setBgImage((prev) =>
-          prev
-            ? {
-              ...prev,
-              col: ds.startCol + dx / ds.cs,
-              row: ds.startRow + dy / ds.cs,
-            }
-            : prev
-        );
+        setBgImage((prev) => prev ? {
+          ...prev,
+          col: ds.startCol + dx / ds.cs,
+          row: ds.startRow + dy / ds.cs,
+        } : prev);
       } else if (ds.type === "resize") {
         const aspect = ds.startCellW / ds.startCellH;
         const newCellW = Math.max(1, ds.startCellW + dx / ds.cs);
         const newCellH = newCellW / aspect;
-        setBgImage((prev) =>
-          prev ? { ...prev, cellW: newCellW, cellH: newCellH } : prev
-        );
+        setBgImage((prev) => prev ? { ...prev, cellW: newCellW, cellH: newCellH } : prev);
       }
     };
     const onUp = () => {
@@ -954,7 +1222,7 @@ export default function useGridState() {
   // ═══════════════════════════════════════════════════════════════════════════
 
   const actionsRef = useRef({});
-  actionsRef.current = { undo, redo, clearSelected, copySelected, paste };
+  actionsRef.current = { undo, redo, clearSelected, copySelected, paste, saveGridmark, endGuideLine: () => { setGuideLineMode(false); guideLineStart.current = null; setGuideLinePreview(null); } };
 
   useEffect(() => {
     const handler = (e) => {
@@ -965,7 +1233,16 @@ export default function useGridState() {
       const ctrl = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
 
-      if (ctrl && key === "z" && !e.shiftKey) {
+      if (key === "escape") {
+        e.preventDefault();
+        actionsRef.current.endGuideLine();
+        return;
+      }
+
+      if (ctrl && key === "s") {
+        e.preventDefault();
+        actionsRef.current.saveGridmark();
+      } else if (ctrl && key === "z" && !e.shiftKey) {
         e.preventDefault();
         actionsRef.current.undo();
       } else if (ctrl && (key === "y" || (key === "z" && e.shiftKey))) {
@@ -991,77 +1268,33 @@ export default function useGridState() {
   // ═══════════════════════════════════════════════════════════════════════════
 
   return {
-    symbols,
-    showEditSymbols,
-    setShowEditSymbols,
-    newSymName,
-    setNewSymName,
-    newSymWidth,
-    setNewSymWidth,
-    newSymSvg,
-    addError,
-    fileInputRef,
-    handleSvgFileChange,
-    addSymbol,
-    deleteSymbol,
-    placeSymbol,
-    editingSymbolId,
-    editSymName,
-    setEditSymName,
-    editSymWidth,
-    setEditSymWidth,
-    startEditSymbol,
-    saveEditSymbol,
-    cancelEditSymbol,
-    showDirectory,
-    setShowDirectory,
-    svgTree,
-    customDirectoryTree,
-    dirFileInputRef,
-    handleDirSvgUpload,
-    addFromDirectory,
-    removeFromDirectory,
-    offset,
-    zoom,
-    cs,
-    containerRef,
-    spaceDown,
-    getViewport,
-    selected,
-    setSelected,
-    dragRect,
+    symbols, showEditSymbols, setShowEditSymbols,
+    newSymName, setNewSymName, newSymWidth, setNewSymWidth, newSymSvg, addError,
+    fileInputRef, handleSvgFileChange, addSymbol, deleteSymbol, placeSymbol,
+    editingSymbolId, editSymName, setEditSymName, editSymWidth, setEditSymWidth,
+    startEditSymbol, saveEditSymbol, cancelEditSymbol,
+    showDirectory, setShowDirectory, svgTree, customDirectoryTree,
+    dirFileInputRef, handleDirSvgUpload, addFromDirectory, removeFromDirectory,
+    offset, zoom, cs, containerRef, spaceDown, getViewport,
+    selected, setSelected, dragRect,
     cells,
-    gridRows,
-    gridCols,
-    addColumn,
-    addRow,
-    removeSelectedColumns,
-    removeSelectedRows,
-    historyLen,
-    undo,
-    redo,
-    clipboard,
-    copySelected,
-    paste,
-    moveMode,
-    moveOffset,
-    enterMoveMode,
-    commitMove,
-    clearSelected,
-    resetGrid,
-    showConfirm,
-    setShowConfirm,
-    bgImage,
-    bgImageEditing,
-    bgFileInputRef,
-    handleBgImageUpload,
-    bgImageStartDrag,
-    bgImageFix,
-    bgImageEdit,
-    bgImageRemove,
-    onMouseDown,
-    onMouseMove,
-    onMouseUp,
-    onWheel,
+    gridRows, gridCols,
+    addColumn, addRow, insertColumnsBefore, insertColumnsAfter,
+    insertRowBefore, insertRowAfter, removeSelectedColumns, removeSelectedRows,
+    historyLen, undo, redo,
+    clipboard, copySelected, paste,
+    moveMode, moveOffset, enterMoveMode, commitMove,
+    clearSelected, resetGrid, importGridmark, saveGridmark, saveError,
+    showConfirm, setShowConfirm,
+    bgImage, bgImageEditing, bgFileInputRef, handleBgImageUpload,
+    bgImageStartDrag, bgImageFix, bgImageEdit, bgImageRemove,
+    onMouseDown, onMouseMove, onMouseUp, onWheel,
+    dirtyRef,
+    fileName, setFileName,
+    guideLineMode, guideLines, guideLinePreview,
+    startGuideLine: useCallback(() => { setGuideLineMode(true); setSelected(new Set()); }, []),
+    endGuideLine: useCallback(() => { setGuideLineMode(false); guideLineStart.current = null; setGuideLinePreview(null); }, []),
+    clearGuideLines: useCallback(() => setGuideLines([]), []),
+    removeLastGuideLine: useCallback(() => setGuideLines((prev) => prev.slice(0, -1)), []),
   };
 }
