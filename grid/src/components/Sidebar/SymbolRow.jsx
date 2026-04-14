@@ -50,7 +50,7 @@ export default function SymbolRow({
         {previewDataUrl && (
           <div
             style={{
-              width: 36,
+              width: 36 * (sym.width || 1),
               height: 36,
               background: "#fff",
               borderRadius: 3,
@@ -106,7 +106,7 @@ export default function SymbolRow({
           {previewDataUrl && (
             <div
               style={{
-                width: 33,
+                width: 33 * (sym.width || 1),
                 height: 33,
                 background: "#fff",
                 borderRadius: 3,
@@ -214,7 +214,7 @@ export default function SymbolRow({
       {previewDataUrl && (
         <div
           style={{
-            width: 33,
+            width: 33 * (sym.width || 1),
             height: 33,
             background: "#fff",
             borderRadius: 3,

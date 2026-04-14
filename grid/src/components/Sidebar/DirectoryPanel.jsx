@@ -26,26 +26,26 @@ function DirFileRow({ item, symbols, addFromDirectory, removeFromDirectory, isCu
       style={{
         display: "flex",
         alignItems: "center",
-        padding: "3px 6px",
+        padding: "4px 6px",
         marginLeft: (depth + 1) * 10,
-        marginBottom: 1,
+        marginBottom: 2,
         background: "#0f1828",
         border: "1px solid #1a2840",
         borderRadius: 4,
-        gap: 5,
+        gap: 8,
       }}
     >
       <div
         style={{
-          width: 20,
-          height: 20,
+          width: 36 * (item.defaultWidth || 1),
+          height: 36,
           background: "#fff",
           borderRadius: 3,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           flexShrink: 0,
-          padding: 1,
+          padding: 2,
           boxSizing: "border-box",
         }}
       >
@@ -59,7 +59,7 @@ function DirFileRow({ item, symbols, addFromDirectory, removeFromDirectory, isCu
         <div
           style={{
             color: "#c0c0e0",
-            fontSize: 9,
+            fontSize: 16,
             fontWeight: 600,
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -68,9 +68,9 @@ function DirFileRow({ item, symbols, addFromDirectory, removeFromDirectory, isCu
         >
           {item.name}
         </div>
-        <div style={{ color: "#4a5a7a", fontSize: 7 }}>{item.defaultWidth}W</div>
+        <div style={{ color: "#4a5a7a", fontSize: 12 }}>{item.defaultWidth}W</div>
       </div>
-      <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+      <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
         {isCustom && (
           <button
             onClick={() => removeFromDirectory(item.id)}
@@ -80,8 +80,8 @@ function DirFileRow({ item, symbols, addFromDirectory, removeFromDirectory, isCu
               borderRadius: 3,
               color: "#e94560",
               cursor: "pointer",
-              fontSize: 8,
-              padding: "1px 4px",
+              fontSize: 12,
+              padding: "2px 6px",
               fontWeight: 700,
             }}
           >
@@ -97,8 +97,8 @@ function DirFileRow({ item, symbols, addFromDirectory, removeFromDirectory, isCu
             borderRadius: 3,
             color: alreadyAdded ? "#3a5a3a" : "#60d090",
             cursor: alreadyAdded ? "default" : "pointer",
-            fontSize: 8,
-            padding: "1px 5px",
+            fontSize: 12,
+            padding: "2px 7px",
             fontWeight: 700,
           }}
         >
@@ -123,34 +123,30 @@ function TreeNode({
   removeFromDirectory,
   isCustomTree,
 }) {
-  const [open, setOpen] = useState(defaultOpen ?? depth < 1);
+  const [open, setOpen] = useState(defaultOpen ?? depth === 0);
 
   const subfolders = Object.keys(node).filter((k) => k !== "__files");
   const files = node.__files || [];
-  const hasContent = files.length > 0 || subfolders.length > 0;
 
-  if (!hasContent) return null;
-
-  const indent = depth * 10;
+  if (subfolders.length === 0 && files.length === 0) return null;
 
   return (
-    <div style={{ marginLeft: indent }}>
+    <div style={{ marginLeft: depth > 0 ? 8 : 0 }}>
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => setOpen(!open)}
         style={{
           display: "flex",
           alignItems: "center",
-          gap: 4,
+          gap: 5,
           width: "100%",
-          padding: "3px 6px",
+          padding: "4px 6px",
           marginBottom: 1,
           background: "transparent",
           border: "none",
           borderRadius: 4,
           cursor: "pointer",
-          textAlign: "left",
           color: depth === 0 ? "#7090c0" : "#6080a0",
-          fontSize: depth === 0 ? 10 : 9,
+          fontSize: depth === 0 ? 14 : 13,
           fontWeight: 700,
           fontFamily: "inherit",
           letterSpacing: depth === 0 ? 0.5 : 0,
@@ -161,8 +157,8 @@ function TreeNode({
         <span
           style={{
             display: "inline-block",
-            width: 10,
-            fontSize: 8,
+            width: 12,
+            fontSize: 10,
             color: "#5070a0",
             transition: "transform 0.15s",
             transform: open ? "rotate(90deg)" : "rotate(0deg)",
@@ -170,9 +166,9 @@ function TreeNode({
         >
           ▶
         </span>
-        <span style={{ color: "#5a7ab0", fontSize: 11 }}>📁</span>
+        <span style={{ color: "#5a7ab0", fontSize: 14 }}>📁</span>
         {label}
-        <span style={{ color: "#3a5a80", fontSize: 8, fontWeight: 400, marginLeft: 2 }}>
+        <span style={{ color: "#3a5a80", fontSize: 11, fontWeight: 400, marginLeft: 2 }}>
           ({countFiles(node)})
         </span>
       </button>
@@ -218,10 +214,8 @@ export default function DirectoryPanel({
   removeFromDirectory,
   symbols,
 }) {
-  const hasBuiltIn = countFiles(svgTree) > 0;
-  const hasCustom = customDirectoryTree.__files.length > 0 ||
+  const hasCustomContent = customDirectoryTree.__files.length > 0 ||
     Object.keys(customDirectoryTree).filter((k) => k !== "__files").length > 0;
-  const hasAny = hasBuiltIn || hasCustom;
 
   return (
     <div
@@ -235,7 +229,7 @@ export default function DirectoryPanel({
       }}
     >
       <div style={{ padding: "8px 8px 4px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ color: "#5080e0", fontSize: 10, fontWeight: 700, letterSpacing: 1 }}>SVG DIRECTORY</div>
+        <div style={{ color: "#5080e0", fontSize: 13, fontWeight: 700, letterSpacing: 1 }}>SVG DIRECTORY</div>
         <button
           onClick={() => dirFileInputRef.current?.click()}
           style={{
@@ -244,9 +238,9 @@ export default function DirectoryPanel({
             borderRadius: 4,
             color: "#60a0d0",
             cursor: "pointer",
-            fontSize: 9,
+            fontSize: 12,
             fontWeight: 700,
-            padding: "2px 8px",
+            padding: "3px 10px",
           }}
           onMouseEnter={(e) => (e.currentTarget.style.background = "#2a4060")}
           onMouseLeave={(e) => (e.currentTarget.style.background = "#1a3050")}
@@ -264,24 +258,22 @@ export default function DirectoryPanel({
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: "2px 4px 8px" }}>
-        {/* Built-in SVGs loaded from src/assets/svgs/ at build time */}
-        {hasBuiltIn && (
-          <TreeNode
-            node={svgTree}
-            label="Built-in"
-            depth={0}
-            defaultOpen={true}
-            symbols={symbols}
-            addFromDirectory={addFromDirectory}
-            removeFromDirectory={removeFromDirectory}
-            isCustomTree={false}
-          />
-        )}
-        {/* Runtime uploads */}
-        {hasCustom && (
+        {/* Built-in SVGs from src/assets/svgs/ */}
+        <TreeNode
+          node={svgTree}
+          label="Built-in"
+          depth={0}
+          defaultOpen={true}
+          symbols={symbols}
+          addFromDirectory={addFromDirectory}
+          removeFromDirectory={removeFromDirectory}
+          isCustomTree={false}
+        />
+        {/* Custom uploads (runtime) */}
+        {hasCustomContent && (
           <TreeNode
             node={customDirectoryTree}
-            label="Uploaded"
+            label="Custom Uploads"
             depth={0}
             defaultOpen={true}
             symbols={symbols}
@@ -289,15 +281,6 @@ export default function DirectoryPanel({
             removeFromDirectory={removeFromDirectory}
             isCustomTree={true}
           />
-        )}
-        {/* Empty state */}
-        {!hasAny && (
-          <div style={{ padding: "16px 12px", textAlign: "center" }}>
-            <div style={{ color: "#3a5a80", fontSize: 20, marginBottom: 6 }}>↑</div>
-            <div style={{ color: "#4a6a90", fontSize: 10, lineHeight: 1.6 }}>
-              No SVGs yet — add <code style={{ color: "#60a0d0" }}>.svg</code> files to <code style={{ color: "#60a0d0" }}>src/assets/svgs/</code> and rebuild, or click <span style={{ color: "#60a0d0", fontWeight: 700 }}>+ ADD SVG</span> to upload at runtime
-            </div>
-          </div>
         )}
       </div>
     </div>
